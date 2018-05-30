@@ -1,12 +1,9 @@
-
-# coding: utf-8
-
+# coding=utf-8
 import requests
 import lxml
 from bs4 import BeautifulSoup
 from datetime import datetime, date
 import MySQLdb
-from itertools import izip
 import jieba.posseg as pseg
 import jieba
 
@@ -14,7 +11,6 @@ def writeLog(level, message):
     global file_
     message = "Log %s %s %s" % (level, datetime.now(), message)
     file_.write("%s\n"%message)
-
 def writeFile(kind_number,keywords):
     if kind_number==0:
         f=open('keyword/Other.txt','a')
@@ -42,35 +38,44 @@ def writeFile(kind_number,keywords):
             key = key.encode('utf-8')    
             f.write(key+" 20 n\n")
     f.close() 
-    return f.name 
-def getNews(url,kind):
+    return f.name  
+
+def getNews(url):
     try:
         res = requests.get(url)
         soup = BeautifulSoup(res.text,"lxml")
-        #print "URL:"+url
-        #title = soup.title.string 
+        #print soup
     
-        if kind == u'娛樂' or kind == u'日韓' or kind == u'華流':
-            title = soup.find(id="newsTitle").text.strip()
-            date = soup.find("div","time").text.strip()
-            content = soup.find("div","Content2").text.strip()
-            keywords = soup.find(attrs={"name":"keywords"})['content'].strip()  
-        else:
-            title = soup.find("div","title").text.strip()
-            date = soup.find("span","date").text.strip()
-            content = soup.find("div",id="Content1").text.strip() 
-            keywords = soup.find(attrs={"name":"Keywords"})['content'].strip()
-        date=date.replace("/","-")
+        title = soup.find("title").text
+        #print "Title: "+title
+
+        date = soup.find("time").text.strip()    
+        date = date.replace(u"年","-")
+        date = date.replace(u"月","-")
+        date = date.replace(u"日","")
+        date +=":00"
         date = datetime.strptime(date,"%Y-%m-%d %H:%M:%S")
         #print date
-
-        kind_number = kind_dict.get(kind,0)
+      
+        kinds = soup.find(attrs={"name":"section"})['content']
+        #print kinds
+        kind_number = kind_dict.get(kinds,0)
         #print kind_number
+        
+        keywords = soup.find(attrs={"name":"news_keywords"})['content']  
+        #print keywords
+
+        content = soup.find("div","clummbox clear-fix").find_all("p")
+        #print "Content: "
+        text=""
+        for i in content:
+            text=text+i.text
+        #print text
+        content = text
         while keywords.endswith(","):
             keywords = keywords[:-1]
         keywords = keywords.split(",")
-        
-        f = writeFile(kind_number,keywords)
+        f = writeFile(kind_number,keywords) 
         jieba.load_userdict(f)
         words = pseg.cut(content)
         keyword_string=""
@@ -83,63 +88,43 @@ def getNews(url,kind):
         try:
             db = MySQLdb.connect(host="localhost",user="", passwd="",db="", charset="utf8")
             cursor = db.cursor()
-        
             sql = "INSERT INTO news(Link, Title, Content, Kinds, Post_time, Keywords)                VALUES (%s,%s,%s,%s,%s,%s)"
+                # 插入資料
             cursor.execute(sql,(url, title, content , kind_number, date, keyword_string))
             db.commit()
             db.close()
         except MySQLdb.Error as err:
 			if 1062 in err:
-            	writeLog('E',"[Repeat] %s url=%s"%(err,url))
+                writeLog('E',"[Repeat] %s url=%s"%(err,url))
             else:
-		writeLog('E',"[DatabaseError] %s url=%s"%(err,url))
+                writeLog('E',"[DatabaseError] %s url=%s"%(err,url))
     except AttributeError as error:
-        writeLog('E',"[AttributeError] %s url=%s"%(error,url))
+        writeLog('E',"[AttributeError] %s  url=%s"%(error,url))
         
     except requests.ConnectionError as error:
-        writeLog('E',"[ConnectError] %s url=%s"%(error,url))     
-
+        writeLog('E',"[ConnectError] %s url=%s"%(error,url))
+   
     except requests.exceptions.ConnectionError as error:
         writeLog('E',"[Request_Connect] %s url=%s"%(error,url))
     except Exception as error:
-		writeLog('E',"[ERROR] %s url=%s"%(error,url))
-def getUrl(page):  
-    try:
-        res = requests.get(page)
-        soup = BeautifulSoup(res.text,"lxml")
-
-        url = soup.find_all("a","gt")
-        kind_all = soup.find_all("div","tab_list_type")
-        nextPage = soup.find("div","pager")
-        nextPage = nextPage.find_all("a")
-        changePage = nextPage[len(nextPage)-1].get("href")
-        writeLog("I","[Page] %s"%changePage)
-		lastPage = "http://www.setn.com"+nextPage[len(nextPage)-2].get("href")
-        url[30:]=()
-        for i,j in izip(url,kind_all):
-            title = i.text
-            #print "Title:"+title
-            kind = j.text
-            #print "Kind: "+kind       
-            href=i.get("href")
-            #print "HREF:"+href
-            getNews("http://www.setn.com"+href,kind) 
-
-        if page!= lastPage:
-            getUrl("http://www.setn.com"+changePage)
-            
-    except AttributeError as error:
-        writeLog('E',"[AttributeError] %s  url=%s"%(error,page))
-    except requests.ConnectionError as error:
-        writeLog('E',"[ConnectError] %s url=%s"%(error,page)) 
-	except Exception as error:
-        writeLog('E',"[ERROR] %s url=%s"%(error,page))
-
-if __name__ == '__main__':  
-    kind_dict = {u'社會':1,u'日韓':2,u'娛樂':2,u'華流':2,u'生活':3,u'運動':4,u'國際':5,u'大陸':5,u'政治':6,u'財經':7,u'科技':8}
+		writeLog('E',"[Error] %s url=%s"%(error,url))
+if __name__ == '__main__':   
+    kind_dict = {u'社會':1,u'娛樂':2,u'娛樂新聞':2,u'生活新聞':3,u'生活':3,u'健康':3,u'體育':4,u'國際':5,u'兩岸':5,u'國際大事':5,u'政治':6,u'政治要聞':6,u'財經要聞':7,u'財經':7}
     jieba.set_dictionary('dict.txt.big')
-    file_ = open('set_news.log','a')
-    hotNews = "http://www.setn.com/ViewAll.aspx?PageGroupID=0"
-    getUrl(hotNews)
+    file_ = open('chinatime_news.log','a')
+    hotNews = "http://www.chinatimes.com/hotnews/click"
+    try:        
+        res = requests.get(hotNews)
+        soup = BeautifulSoup(res.text,"lxml")
+        url_search = soup.find_all("div","content")
+        url_search[10:]=()
+        for i in url_search:
+            url = i.find("a").get("href")
+            title = i.find("a").text
+            getNews(url)
+    except requests.ConnectionError as error:
+        writeLog('E',"[ConnectError] %s url=%s"%(error,hotNews))
+	except Exception as error:
+		writeLog('E',"[Error] %s url=%s"%(error,hotNews))
     writeLog("I", "Finish")
     file_.close()

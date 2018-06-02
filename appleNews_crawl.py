@@ -81,11 +81,11 @@ def getNews(url):
             db.close()
         except MySQLdb.Error as err:
 			if 1062 in err:
-					writeLog('E',"[Repeat] %s url=%s"%(err,url))
+                writeLog('E',"[Repeat] %s url=%s"%(err,url))
             else:
                 writeLog('E',"[DatabaseError] %s url=%s"%(err,url))
     except AttributeError as error:
-        writeLog('E',"[ERROR] %s attributeError url=%s"%(error,url))
+        writeLog('E',"[AttributeError] %s url=%s"%(error,url))
     
     except ValueError as error:
         writeLog('E',"[ValueError] %s url=%s"%(error, url))
@@ -94,9 +94,10 @@ def getNews(url):
         writeLog('E',"[ConnectError] %s url=%s"%(error,url))
     #print content
     except requests.exceptions.ConnectionError as error:
-		writeLog('E',"[Request_Connect] %s url=%s"%(error,url))
+	writeLog('E',"[Request_Connect] %s url=%s"%(error,url))
     except Exception as error:
-		writeLog('E',"[Error] %s url=%s"%(error,url))
+	writeLog('E',"[Error] %s url=%s"%(error,url))
+	
 def getUrl(url,bool_page,shift):
     global file_
     res = requests.get(url)
@@ -120,15 +121,14 @@ def getUrl(url,bool_page,shift):
             page_url = page.get('href')
             next_page = "https://tw.appledaily.com"+page_url
             title = page.get('title')
-			title = title.encode('utf-8')
-			writeLog("I","[Page] %s"%title)
             #print title
             if title==u"下10頁":
                 bool_page=True
                 shift = True
             else:
                 bool_page=False
-            #title = title.encode('utf-8')
+            title = title.encode('utf-8')
+			writeLog("I","[Page] %s"%title)
             getUrl(next_page,bool_page,shift)
             
 if __name__ == '__main__': 

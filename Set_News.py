@@ -38,7 +38,7 @@ def writeFile(kind_number,keywords):
         f=open('Test.txt','a')    
         
     for key in keywords:
-        if key!=u'':
+        if key!=u' ':
             key = key.encode('utf-8')    
             f.write(key+" 20 n\n")
     f.close() 
@@ -56,8 +56,8 @@ def getNews(url,kind):
             content = soup.find("div","Content2").text.strip()
             keywords = soup.find(attrs={"name":"keywords"})['content'].strip()  
         else:
-            title = soup.find("div","title").text.strip()
-            date = soup.find("span","date").text.strip()
+            title = soup.find("h1","news-title-3").text.strip()
+            date = soup.find("time","page-date").text.strip()
             content = soup.find("div",id="Content1").text.strip() 
             keywords = soup.find(attrs={"name":"Keywords"})['content'].strip()
         date=date.replace("/","-")
@@ -66,7 +66,7 @@ def getNews(url,kind):
 
         kind_number = kind_dict.get(kind,0)
         #print kind_number
-        while keywords.endswith(","):
+        while keywords.endswith(",") or keywords.endswith(" "):
             keywords = keywords[:-1]
         keywords = keywords.split(",")
         
@@ -79,17 +79,17 @@ def getNews(url,kind):
                 keyword_string+=word.word+","
                 #print word.word, word.flag 
         keyword_string=keyword_string[:-1]
-        
+        source = u"三立"
         try:
-            db = MySQLdb.connect(host="localhost",user="", passwd="",db="", charset="utf8")
+            db = MySQLdb.connect(host="localhost",user="wkps1015", passwd="wkps1015",db="Crawl", charset="utf8")
             cursor = db.cursor()
         
-            sql = "INSERT INTO news(Link, Title, Content, Kinds, Post_time, Keywords)                VALUES (%s,%s,%s,%s,%s,%s)"
-            cursor.execute(sql,(url, title, content , kind_number, date, keyword_string))
+            sql = "INSERT INTO news(Link, Title, Content, Kinds, Post_time, Keywords, Source)                VALUES (%s,%s,%s,%s,%s,%s,%s)"
+            cursor.execute(sql,(url, title, content , kind_number, date, keyword_string, source))
             db.commit()
             db.close()
         except MySQLdb.Error as err:
-			if 1062 in err:
+	    if 1062 in err:
             	writeLog('E',"[Repeat] %s url=%s"%(err,url))
             else:
 		writeLog('E',"[DatabaseError] %s url=%s"%(err,url))
@@ -102,39 +102,34 @@ def getNews(url,kind):
     except requests.exceptions.ConnectionError as error:
         writeLog('E',"[Request_Connect] %s url=%s"%(error,url))
     except Exception as error:
-		writeLog('E',"[ERROR] %s url=%s"%(error,url))
+	writeLog('E',"[ERROR] %s url=%s"%(error,url))
 def getUrl(page):  
     try:
         res = requests.get(page)
         soup = BeautifulSoup(res.text,"lxml")
+	news = soup.find("div","row NewsList")
+        url = news.find_all("a","gt")
+        kind_all = news.find_all("div","newslabel-tab")
+        
+        for href, kind in izip(url,kind_all):
+            href = href.get("href")
+            kind = kind.text
+            getNews("http://www.setn.com"+href,kind)
+        
+        if page=="http://www.setn.com/ViewAll.aspx?PageGroupID=0":            
+            nextPage = soup.find("div","pagination-area")
+            nextPage = nextPage.find_all("a")
+            changePage = nextPage[3:-2]            
+            for change in changePage:          
+                change = change.get("href")
+                getUrl("http://www.setn.com"+change)
 
-        url = soup.find_all("a","gt")
-        kind_all = soup.find_all("div","tab_list_type")
-        nextPage = soup.find("div","pager")
-        nextPage = nextPage.find_all("a")
-        changePage = nextPage[len(nextPage)-1].get("href")
-        writeLog("I","[Page] %s"%changePage)
-		lastPage = "http://www.setn.com"+nextPage[len(nextPage)-2].get("href")
-        url[30:]=()
-        for i,j in izip(url,kind_all):
-            title = i.text
-            #print "Title:"+title
-            kind = j.text
-            #print "Kind: "+kind       
-            href=i.get("href")
-            #print "HREF:"+href
-            getNews("http://www.setn.com"+href,kind) 
-
-        if page!= lastPage:
-            getUrl("http://www.setn.com"+changePage)
-            
     except AttributeError as error:
         writeLog('E',"[AttributeError] %s  url=%s"%(error,page))
     except requests.ConnectionError as error:
         writeLog('E',"[ConnectError] %s url=%s"%(error,page)) 
-	except Exception as error:
-        writeLog('E',"[ERROR] %s url=%s"%(error,page))
-
+    except Exception as error:
+	writeLog('E',"[ERROR] %s url=%s"%(error,page))
 if __name__ == '__main__':  
     kind_dict = {u'社會':1,u'日韓':2,u'娛樂':2,u'華流':2,u'生活':3,u'運動':4,u'國際':5,u'大陸':5,u'政治':6,u'財經':7,u'科技':8}
     jieba.set_dictionary('dict.txt.big')
